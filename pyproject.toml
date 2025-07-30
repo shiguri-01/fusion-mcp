@@ -1,0 +1,19 @@
+[project]
+name = "fusion-mcp"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "ruff>=0.12.5",
+    "ty>=0.0.1a16",
+]
+
+[tool.uv.workspace]
+members = [
+    "mcp-server",
+    "mcp-addin",
+]
