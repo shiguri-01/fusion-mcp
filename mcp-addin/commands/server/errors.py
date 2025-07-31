@@ -20,12 +20,12 @@ class InvalidUserInputError(FusionServerError):
 class FusionExecutionError(FusionServerError):
     """Fusion APIのコード実行中に発生するエラー"""
 
-    def __init__(self, action_name: str, message: str) -> None:
+    def __init__(self, message: str) -> None:
         super().__init__(
-            f"Error executing action '{action_name}': {message}",
+            message,
             error_type="FusionExecutionError",
         )
-        self.action_name = action_name
+
 
 
 class ServerConnectionError(FusionServerError):
