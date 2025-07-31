@@ -3,7 +3,7 @@ import adsk.core
 from ..errors import FusionExecutionError, InvalidUserInputError
 
 
-def get_viewport_screenshot(filepath: str | None = None) -> dict[str, str]:
+def get_viewport_screenshot(filepath: str) -> dict[str, str]:
     """ビューポートのスクリーンショットを撮り、指定されたパスに保存する
 
     Args:
