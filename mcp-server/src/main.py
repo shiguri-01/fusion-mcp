@@ -178,7 +178,10 @@ async def execute_code(
     try:
         connection = get_fusion_addin_client()
 
-        result = connection.call_action("execute_code", {"code": code})
+        result = connection.call_action(
+            "execute_code",
+            {"code": code, "transaction_name": description},
+        )
 
         if not result.get("success", False):
             return {"error": result.get("error", {})}

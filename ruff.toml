@@ -21,6 +21,8 @@ ignore = [
     "G004",  # logging f string
     "RET504", # unnecessary assign
     "EM", # string/f-string/dot-format in exception
+    "RUF002", # zenkaku
+    "RUF003", # zenkaku
 ]
 unfixable = [
     "F401", # unused import
