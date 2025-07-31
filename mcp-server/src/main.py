@@ -234,9 +234,10 @@ def get_viewport_screenshot() -> Image | dict[str, str]:
     try:
         connection = get_fusion_addin_client()
 
-        temp_dir = Path(tempfile.gettempdir())
-        filename = f"fusion_viewport_screenshot_{os.getpid()}.png"
-        filepath = temp_dir / filename
+        # 一時ファイルを作成してスクリーンショットを保存
+        fd, filepath_str = tempfile.mkstemp(prefix="fusion_viewport_screenshot_", suffix=".png")
+        os.close(fd)  # パスだけ必要なので、ファイルディスクリプタは閉じる
+        filepath = Path(filepath_str)
 
         result = connection.call_action("get_viewport_screenshot", {"filepath": str(filepath)})
 
