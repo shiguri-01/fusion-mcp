@@ -147,43 +147,55 @@ async def execute_code(
             max_length=20000,
         ),
     ],
-    description: Annotated[
+    summary: Annotated[
         str | None,
         Field(
-            description="Optional description of the code being executed",
+            description="Optional summary of the code being executed",
             max_length=1000,
             default=None,
         ),
     ] = None,
-) -> dict[str, Any]:
-    """Execute Python code within Autodesk Fusion CAD environment.
+) -> str | dict[str, str]:
+    """Execute a Python script as a single transaction in Autodesk Fusion 360.
 
-    Provides full access to the Fusion API for 3D modeling, sketching, assemblies,
-    simulations, and data extraction. Code executes in the active Fusion design
-    with pre-initialized objects: adsk, app, design, rootComp.
+    This tool runs Python code with access to the Fusion 360 API. Any modifications
+    to the CAD model are grouped into a single transaction, which can be undone in
+    Fusion's UI. If the code performs no modifications (e.g., only uses `print`),
+    no transaction is recorded.
 
-    Print statements are captured and returned as output. Operations are applied
-    immediately to the CAD model - use Fusion's undo to revert changes.
+    **Return Value:**
+    The tool's return value depends on whether the tool itself executed successfully,
+    not on whether the provided code ran without errors.
 
-    Available objects in execution namespace:
-    - adsk: Complete Fusion API module (adsk.core, adsk.fusion, adsk.cam)
-    - app: Application instance (adsk.core.Application.get())
-    - design: Current active design document
-    - root_comp: Root component of the current design
+    - **On SUCCESS (returns `str`):**
+      - The captured output from `print()` statements.
+      - If the user's code has an error, the Python stack trace is returned as part
+        of this string. This is still considered a successful tool execution.
 
-    Returns:
-        JSON string with execution results: {"result": "output"} or {"error": "msg"}
+    - **On FAILURE (returns `dict`):**
+      - A dictionary `{"error": {"type": "...", "message": "..."}}` is returned
+        if the tool fails internally (e.g., cannot connect to Fusion).
 
+    **Execution Context:**
+    The script has access to pre-initialized Fusion API objects:
+    - `adsk`: The root API module.
+    - `app`: The application instance.
+    - `design`: The active design document.
+    - `root_comp`: The root component of the design.
     """
+    execution_result: str = ""
     try:
         connection = get_fusion_addin_client()
 
-        result = connection.call_action("execute_code", {"code": code})
+        result = connection.call_action(
+            "execute_code",
+            {"code": code, "transaction_name": summary},
+        )
 
         if not result.get("success", False):
             return {"error": result.get("error", {})}
 
-        return {"result": result.get("result", "")}
+        execution_result = result.get("result", "")
 
     except ConnectionError:
         return ADDIN_CONNECTION_ERROR_RESPONSE
@@ -191,8 +203,9 @@ async def execute_code(
     except Exception as e:
         error_msg = f"Code execution failed: {e!s}"
         return {"error": {"type": "UnknownError", "message": error_msg}}
+
     else:
-        return result
+        return execution_result
 
 
 def main() -> None:

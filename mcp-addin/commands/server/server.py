@@ -28,7 +28,7 @@ class FusionServer:
         self.server_thread: threading.Thread | None = None
 
         self.actions = {
-            "execute_code": execute_code.execute_code,
+            "execute_code": execute_code.execute_code_in_transaction,
         }
 
     def _create_handler_class(self) -> type[BaseHTTPRequestHandler]:
