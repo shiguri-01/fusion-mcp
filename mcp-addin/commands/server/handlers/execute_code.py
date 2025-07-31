@@ -168,13 +168,13 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
 
 def execute_code_in_transaction(
     code: str,
-    transaction_name: str = "Python Script Execution",
+    transaction_name: str | None = None,
 ) -> str:
     """任意のPythonスクリプトを単一のトランザクションとして実行する
 
     Args:
         code (str): 実行するPythonコード
-        transaction_name (str): アンドゥスタックに表示されるトランザクションの説明
+        transaction_name (str, optional): アンドゥスタックに表示されるトランザクションの説明
 
     Returns:
         str: 実行結果の文字列（標準出力）
@@ -182,6 +182,8 @@ def execute_code_in_transaction(
     """
     if not code:
         raise InvalidUserInputError("Parameter 'code' cannot be empty")
+    if not transaction_name:
+        transaction_name = "Python Script Execution"
 
     app = adsk.core.Application.get()
     ui = app.userInterface
