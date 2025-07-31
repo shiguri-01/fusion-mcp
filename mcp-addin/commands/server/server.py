@@ -60,7 +60,7 @@ class FusionServer:
                     }
                     status_code = 200
 
-                except FusionExecutionError as e:
+                except FusionServerError as e:
                     # 意図的に分類されたエラー
                     futil.handle_error(f"Action failed: [{e.error_type}] {e}")
                     response_data = {
