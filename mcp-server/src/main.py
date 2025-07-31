@@ -1,9 +1,13 @@
 import logging
+import os
+import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Annotated, Any
 
 import requests
 from fastmcp import Context, FastMCP
+from fastmcp.utilities.types import Image
 from pydantic import Field
 
 # ログ設定
@@ -206,6 +210,59 @@ async def execute_code(
 
     else:
         return execution_result
+
+
+@mcp.tool
+def get_viewport_screenshot() -> Image | dict[str, str]:
+    """Capture a screenshot of the current Fusion viewport.
+
+    The screenshot shows exactly what the user sees in their Fusion viewport,
+    including the current view angle, zoom level, and any active UI elements.
+    This is particularly useful after executing modeling code to confirm the
+    expected visual results.
+
+    **Use this tool to:**
+    - Visualize the current state of the 3D model for analysis or documentation
+    - Verify the results of CAD operations or design changes
+    - Help users understand what's currently displayed in Fusion
+    - Create visual references for design reviews or troubleshooting
+    - Capture the viewport when providing visual feedback about modeling operations
+
+    **Return Value:**
+    Returns an Image object containing the viewport screenshot as PNG data.
+    """
+    try:
+        connection = get_fusion_addin_client()
+
+        # 一時ファイルを作成してスクリーンショットを保存
+        fd, filepath_str = tempfile.mkstemp(prefix="fusion_viewport_screenshot_", suffix=".png")
+        os.close(fd)  # パスだけ必要なので、ファイルディスクリプタは閉じる
+        filepath = Path(filepath_str)
+
+        result = connection.call_action("get_viewport_screenshot", {"filepath": str(filepath)})
+
+        if not result.get("success", False):
+            return {"error": result.get("error", {})}
+
+        if not Path.exists(filepath):
+            return {
+                "error": {
+                    "type": "FileNotFoundError",
+                    "message": f"Screenshot file not found at {filepath}",
+                },
+            }
+
+        with Path.open(filepath, "rb") as f:
+            image_bytes = f.read()
+
+        Path(filepath).unlink(missing_ok=True)
+        return Image(data=image_bytes)
+
+    except ConnectionError:
+        return ADDIN_CONNECTION_ERROR_RESPONSE
+    except Exception as e:
+        error_msg = f"Failed to get viewport screenshot: {e!s}"
+        return {"error": {"type": "UnknownError", "message": error_msg}}
 
 
 def main() -> None:
