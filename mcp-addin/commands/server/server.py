@@ -62,6 +62,8 @@ class FusionServer:
 
                 except FusionServerError as e:
                     # 意図的に分類されたエラー
+                    # アプリレベルのエラーなのでsuccessフィールドをFalseにして、
+                    # HTTPステータスコードは200を返す
                     futil.handle_error(f"Action failed: [{e.error_type}] {e}")
                     response_data = {
                         "success": False,
@@ -70,7 +72,7 @@ class FusionServer:
                             "message": str(e),
                         },
                     }
-                    status_code = 400 if isinstance(e, InvalidUserInputError) else 500
+                    status_code = 200
 
                 except json.JSONDecodeError as e:
                     futil.handle_error(f"Invalid JSON in request: {e}")

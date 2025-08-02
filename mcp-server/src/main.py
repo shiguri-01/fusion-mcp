@@ -1,122 +1,23 @@
-import logging
 import os
 import tempfile
-from dataclasses import dataclass
+from collections.abc import Callable
+from functools import wraps
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated
 
-import requests
+import httpx
 from fastmcp import Context, FastMCP
+from fastmcp.exceptions import ToolError
 from fastmcp.utilities.types import Image
-from pydantic import Field
-
-# ログ設定
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("Fusion360 MCP Server")
-
-# 定数
-DEFAULT_HOST = "localhost"
-DEFAULT_PORT = 3600
-DEFAULT_TIMEOUT = 10.0
-
-ADDIN_CONNECTION_ERROR_RESPONSE = {
-    "error": {
-        "type": "FusionServerConnectionError",
-        "message": "Connection to the Fusion Add-in `mcp-addin` failed. Ask the user to check if the add-in is running.",
-    },
-}
-UNKNOWN_ERROR_RESPONSE = {
-    "error": {
-        "type": "UnknownError",
-        "message": "An unknown error occurred.",
-    },
-}
-
-
-@dataclass
-class FusionAddinClient:
-    """Fusionアドインのサーバーと接続するクライアント"""
-
-    host: str = DEFAULT_HOST
-    port: int = DEFAULT_PORT
-
-    @property
-    def base_url(self) -> str:
-        """サーバーのベースURL"""
-        return f"http://{self.host}:{self.port}"
-
-    def call_action(self, action_name: str, params: dict[str, Any] | None) -> dict[str, Any]:
-        """アドインサーバーのアクションを呼び出す
-
-        Args:
-            action_name (str): 呼び出すアクション名
-            params (dict, optional): アクションのパラメータ
-
-        Returns:
-            dict: アクションの実行結果
-
-        Raises:
-            ConnectionError: サーバーへの接続に失敗した場合やタイムアウトした場合
-            Exception: アドインサーバー側のエラーや、その他のリクエストエラー
-
-        """
-        url = f"{self.base_url}/{action_name}"
-        if params is None:
-            params = {}
-
-        logger.info(f"Calling action '{action_name}' at {url}")
-
-        try:
-            response = requests.post(url, json=params, timeout=DEFAULT_TIMEOUT)
-
-            response_data = response.json()
-
-            success = response_data.get("success", False) and response.status_code == 200
-
-            if success:
-                return response_data
-
-            error_info = response_data.get("error", {})
-            return {
-                success: False,
-                "error": {
-                    "type": error_info.get("type", "UnknownError"),
-                    "message": error_info.get("message", "An unknown error occurred"),
-                },
-            }
-
-        except requests.ConnectionError:
-            logger.exception(f"Connection to {url} failed. Is the server running?")
-            return {
-                "success": False,
-                **ADDIN_CONNECTION_ERROR_RESPONSE,
-            }
-        except requests.Timeout:
-            logger.exception(f"Request to {url} timed out.")
-            return {
-                "success": False,
-                "error": {
-                    "type": "ServerTimeoutError",
-                    "message": f"Request timed out after {DEFAULT_TIMEOUT} seconds",
-                },
-            }
-        except requests.RequestException as e:
-            logger.exception(f"Request failed: {e}")
-            return {
-                "success": False,
-                "error": {
-                    "type": "ServerRequestError",
-                    "message": f"An error occurred while making the request to Fusion: {e!s}",
-                },
-            }
-        except Exception as e:
-            # その他の予期しないエラー
-            logger.exception(f"Unexpected error while calling action '{action_name}': {e}")
-            return {
-                "success": False,
-                **UNKNOWN_ERROR_RESPONSE,
-            }
-
+from fusion_client import (
+    ADDIN_CONNECTION_ERROR,
+    ADDIN_TIMEOUT_ERROR,
+    RESPONSE_PARSE_ERROR,
+    UNKNOWN_ERROR,
+    FusionAddinClient,
+    format_error,
+)
+from pydantic import Field, ValidationError
 
 _fusion_addin_client: FusionAddinClient | None = None
 
@@ -137,7 +38,46 @@ Provides tools for 3D modeling, sketching, assemblies, simulations, and design a
 )
 
 
+def handle_tool_error[**P, R](tool_func: Callable[P, R]) -> Callable[P, R]:
+    """MCPツールのエラーハンドリングをおこなうデコレータ"""
+
+    @wraps(tool_func)
+    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        try:
+            return await tool_func(*args, **kwargs)
+
+        except ToolError:
+            # ToolErrorはそのまま再スロー
+            raise
+
+        except httpx.ConnectError as e:
+            raise ToolError(
+                format_error(ADDIN_CONNECTION_ERROR["type"], ADDIN_CONNECTION_ERROR["message"]),
+            ) from e
+        except httpx.TimeoutException as e:
+            raise ToolError(
+                format_error(
+                    ADDIN_TIMEOUT_ERROR["type"],
+                    ADDIN_TIMEOUT_ERROR["message"],
+                ),
+            ) from e
+        except ValidationError as e:
+            raise ToolError(
+                format_error(
+                    RESPONSE_PARSE_ERROR["type"],
+                    RESPONSE_PARSE_ERROR["message"],
+                ),
+            ) from e
+        except Exception as e:
+            func_name = getattr(tool_func, "__name__", "tool")
+            error_msg = f"Failed to execute {func_name}: {e!s}"
+            raise ToolError(format_error(UNKNOWN_ERROR["type"], error_msg)) from e
+
+    return wrapper
+
+
 @mcp.tool
+@handle_tool_error
 async def execute_code(
     ctx: Context,
     code: Annotated[
@@ -155,114 +95,95 @@ async def execute_code(
         str | None,
         Field(
             description="Optional summary of the code being executed",
-            max_length=1000,
+            max_length=100,
             default=None,
         ),
     ] = None,
-) -> str | dict[str, str]:
-    """Execute a Python script as a single transaction in Autodesk Fusion 360.
+) -> str:
+    """Execute Python code in Autodesk Fusion with full API access.
 
-    This tool runs Python code with access to the Fusion 360 API. Any modifications
-    to the CAD model are grouped into a single transaction, which can be undone in
-    Fusion's UI. If the code performs no modifications (e.g., only uses `print`),
-    no transaction is recorded.
+    - Create, modify, and analyze CAD models.
+    - Group all model changes into a single, undoable transaction.
 
-    **Return Value:**
-    The tool's return value depends on whether the tool itself executed successfully,
-    not on whether the provided code ran without errors.
-
-    - **On SUCCESS (returns `str`):**
-      - The captured output from `print()` statements.
-      - If the user's code has an error, the Python stack trace is returned as part
-        of this string. This is still considered a successful tool execution.
-
-    - **On FAILURE (returns `dict`):**
-      - A dictionary `{"error": {"type": "...", "message": "..."}}` is returned
-        if the tool fails internally (e.g., cannot connect to Fusion).
-
-    **Execution Context:**
-    The script has access to pre-initialized Fusion API objects:
+    Pre-initialized objects:
     - `adsk`: The root API module.
     - `app`: The application instance.
     - `design`: The active design document.
     - `root_comp`: The root component of the design.
+
+    Returns:
+    All `print()` output as string, including error tracebacks if execution fails.
+
+    Important:
+    - The environment is reset for each execution.
+      Include all required imports and variables every time.
+    - Always use `print()` to show progress and results.
+
     """
-    execution_result: str = ""
-    try:
-        connection = get_fusion_addin_client()
+    connection = get_fusion_addin_client()
 
-        result = connection.call_action(
-            "execute_code",
-            {"code": code, "transaction_name": summary},
-        )
+    result = await connection.call_action(
+        "execute_code",
+        {"code": code, "transaction_name": summary},
+    )
 
-        if not result.get("success", False):
-            return {"error": result.get("error", {})}
+    if not result.get("success", False):
+        error_info = result.get("error", {})
+        error_type = error_info.get("type", "UnknownError")
+        error_msg = error_info.get("message", "An unknown error occurred")
+        raise ToolError(format_error(error_type, error_msg))
 
-        execution_result = result.get("result", "")
-
-    except ConnectionError:
-        return ADDIN_CONNECTION_ERROR_RESPONSE
-
-    except Exception as e:
-        error_msg = f"Code execution failed: {e!s}"
-        return {"error": {"type": "UnknownError", "message": error_msg}}
-
-    else:
-        return execution_result
+    output: str = result.get("result", "")
+    return output
 
 
 @mcp.tool
-def get_viewport_screenshot() -> Image | dict[str, str]:
+@handle_tool_error
+async def get_viewport_screenshot() -> Image:
     """Capture a screenshot of the current Fusion viewport.
 
-    The screenshot shows exactly what the user sees in their Fusion viewport,
-    including the current view angle, zoom level, and any active UI elements.
-    This is particularly useful after executing modeling code to confirm the
-    expected visual results.
+    - Captures the viewport's current visual state, including the camera's perspective, orientation, and zoom.
+    - Ideal for verifying modeling results, documenting the design state,
+      or providing visual feedback after a script runs.
 
-    **Use this tool to:**
-    - Visualize the current state of the 3D model for analysis or documentation
-    - Verify the results of CAD operations or design changes
-    - Help users understand what's currently displayed in Fusion
-    - Create visual references for design reviews or troubleshooting
-    - Capture the viewport when providing visual feedback about modeling operations
+    Returns:
+    Image object with screenshot data.
 
-    **Return Value:**
-    Returns an Image object containing the viewport screenshot as PNG data.
     """
+    connection = get_fusion_addin_client()
+
+    # 一時ファイルを作成してスクリーンショットを保存
+    fd, filepath_str = tempfile.mkstemp(prefix="fusion_viewport_screenshot_", suffix=".png")
+    os.close(fd)  # パスだけ必要なので、ファイルディスクリプタは閉じる
+    filepath = Path(filepath_str)
+
     try:
-        connection = get_fusion_addin_client()
-
-        # 一時ファイルを作成してスクリーンショットを保存
-        fd, filepath_str = tempfile.mkstemp(prefix="fusion_viewport_screenshot_", suffix=".png")
-        os.close(fd)  # パスだけ必要なので、ファイルディスクリプタは閉じる
-        filepath = Path(filepath_str)
-
-        result = connection.call_action("get_viewport_screenshot", {"filepath": str(filepath)})
+        result = await connection.call_action(
+            "get_viewport_screenshot",
+            {"filepath": str(filepath)},
+        )
 
         if not result.get("success", False):
-            return {"error": result.get("error", {})}
+            error_info = result.get("error", {})
+            error_type = error_info.get("type", "UnknownError")
+            error_msg = error_info.get("message", "An unknown error occurred")
+            raise ToolError(format_error(error_type, error_msg))
 
         if not Path.exists(filepath):
-            return {
-                "error": {
-                    "type": "FileNotFoundError",
-                    "message": f"Screenshot file not found at {filepath}",
-                },
-            }
+            raise ToolError(
+                format_error(
+                    "FusionScreenshotError",
+                    f"Screenshot was not created by Fusion Add-in. This may indicate a permission issue or Fusion internal error. Please ask the user to check Fusion's file access permissions and try again. Expected file: {filepath}",
+                ),
+            )
 
         with Path.open(filepath, "rb") as f:
             image_bytes = f.read()
 
-        Path(filepath).unlink(missing_ok=True)
         return Image(data=image_bytes)
-
-    except ConnectionError:
-        return ADDIN_CONNECTION_ERROR_RESPONSE
-    except Exception as e:
-        error_msg = f"Failed to get viewport screenshot: {e!s}"
-        return {"error": {"type": "UnknownError", "message": error_msg}}
+    finally:
+        # 一時ファイルを削除
+        Path(filepath).unlink(missing_ok=True)
 
 
 def main() -> None:
