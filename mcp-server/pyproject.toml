@@ -15,7 +15,7 @@ dependencies = [
 fusion-mcp-server = "main:main"
 
 [tool.setuptools]
-py-modules = ["main"]
+py-modules = ["main", "fusion_client"]
 package-dir = { "" = "src" }
 
 [build-system]
