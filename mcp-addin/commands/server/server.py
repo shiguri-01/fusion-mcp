@@ -5,7 +5,7 @@ from typing import Any
 
 from ...lib import fusionAddInUtils as futil
 from .errors import FusionExecutionError, FusionServerError, InvalidUserInputError
-from .handlers import execute_code, screenshot
+from .handlers import execute_code, parameters, screenshot
 
 
 class FusionServer:
@@ -30,6 +30,9 @@ class FusionServer:
         self.actions = {
             "execute_code": execute_code.execute_code_in_transaction,
             "get_viewport_screenshot": screenshot.get_viewport_screenshot,
+            # parameters
+            "get_user_parameters": parameters.get_user_parameters,
+            "set_parameter": parameters.set_parameter,
         }
 
     def _create_handler_class(self) -> type[BaseHTTPRequestHandler]:
