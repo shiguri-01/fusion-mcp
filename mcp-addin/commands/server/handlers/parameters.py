@@ -43,7 +43,12 @@ def get_user_parameters() -> list[FusionParameter]:
 
     """
     app = adsk.core.Application.get()
+    if not app.activeProduct:
+        raise FusionExecutionError("No active design found")
+
     design = adsk.fusion.Design.cast(app.activeProduct)
+    if not design:
+        raise FusionExecutionError("Active product is not a design")
 
     user_params = design.userParameters.asArray()
     return [parameter_to_dict(param) for param in user_params]
@@ -51,6 +56,8 @@ def get_user_parameters() -> list[FusionParameter]:
 
 def set_parameter(param_name: str, expression: str) -> FusionParameter:
     """指定したパラメータの値を設定する
+
+    ユーザーパラメータ・モデルパラメータの両方に対応
 
     Args:
         param_name (str): 設定するパラメータの名前
@@ -70,16 +77,19 @@ def set_parameter(param_name: str, expression: str) -> FusionParameter:
         raise InvalidUserInputError("Parameter 'expression' cannot be empty")
 
     app = adsk.core.Application.get()
+    if not app.activeProduct:
+        raise FusionExecutionError("No active design found")
+
     design = adsk.fusion.Design.cast(app.activeProduct)
+    if not design:
+        raise FusionExecutionError("Active product is not a design")
 
     parameter = design.allParameters.itemByName(param_name)
-
     if not parameter:
         raise FusionExecutionError(f"Parameter '{param_name}' not found")
 
     try:
         parameter.expression = expression
-
         return parameter_to_dict(parameter)
     except Exception as e:
         raise FusionExecutionError(f"Failed to set parameter '{param_name}': {e}") from e
