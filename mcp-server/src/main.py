@@ -17,7 +17,7 @@ from fusion_client import (
     FusionAddinClient,
     format_error,
 )
-from pydantic import Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 _fusion_addin_client: FusionAddinClient | None = None
 
@@ -184,6 +184,79 @@ async def get_viewport_screenshot() -> Image:
     finally:
         # 一時ファイルを削除
         Path(filepath).unlink(missing_ok=True)
+
+
+class FusionParameter(BaseModel):
+    name: str
+    value: float
+    unit: str
+    expression: str
+    comment: str = ""
+
+
+@mcp.tool
+@handle_tool_error
+async def list_user_parameters() -> list[FusionParameter]:
+    """List all User Parameters in the active Fusion design.
+
+    - Retrieves parameters explicitly created by the user.
+
+    Returns:
+    List of objects with keys: `name`, `value`, `unit`, `expression`, `comment`.
+
+    """
+    connection = get_fusion_addin_client()
+    result = await connection.call_action("get_user_parameters")
+
+    if not result.get("success", False):
+        error_type = result.get("error", {}).get("type", "UnknownError")
+        error_msg = result.get("error", {}).get("message", "An unknown error occurred")
+        raise ToolError(format_error(error_type, error_msg))
+
+    params = [FusionParameter.model_validate(param) for param in result.get("result", [])]
+
+    return params
+
+
+@mcp.tool
+@handle_tool_error
+async def set_parameter(
+    param_name: Annotated[
+        str,
+        Field(
+            description="The name of the user parameter to modify. The parameter must already exist.",
+            min_length=1,
+        ),
+    ],
+    expression: Annotated[
+        str,
+        Field(
+            description="The expression for the parameter's value. Can be a number (e.g., '10'), a value with units ('10 mm'), or a formula referencing other parameters ('width / 2'). Without units, the document's default is used.",
+            min_length=1,
+        ),
+    ],
+) -> FusionParameter:
+    """Update a parameter's expression in Fusion.
+
+    - Triggers model recomputation with new value.
+
+    Returns:
+    Object with updated parameter data: `name`, `value`, `unit`, `expression`, `comment`.
+
+    """
+    connection = get_fusion_addin_client()
+    result = await connection.call_action(
+        "set_parameter",
+        {"param_name": param_name, "expression": expression},
+    )
+
+    if not result.get("success", False):
+        error_type = result.get("error", {}).get("type", "UnknownError")
+        error_msg = result.get("error", {}).get("message", "An unknown error occurred")
+        raise ToolError(format_error(error_type, error_msg))
+
+    changed_param = FusionParameter.model_validate(result.get("result", {}))
+    return changed_param
 
 
 def main() -> None:
