@@ -1,36 +1,41 @@
 # Fusion MCP
 
-Autodesk Fusionを操作するためのMCPサーバー
+Autodesk Fusionを操作するMCPサーバー
 
-LLMとFusionを接続し、自然言語による対話でCAD操作を可能にします。
+LLMとFusionを接続し、自然言語による対話でCADの操作を可能にします。
 
 ## 構成
 
-- **MCP Server** (`mcp-server/`):
-  LLMとFusion Addinを接続するMCP(Model Context Protocol)サーバー
+- **MCPサーバー** (`mcp-server/`):
+  LLMとFusionアドインを接続するMCP(Model Context Protocol)サーバー
 
-- **Fusion Add-in** (`mcp-addin/`):
-  MCP Serverからのリクエストを受け取り、FusionでCAD操作を実行するアドイン
+- **Fusionアドイン** (`mcp-addin/`):
+  MCPサーバーからリクエストを受けて、実際にFusionを操作するアドイン
+  
+## MCPツール
 
+- `execute_code`: Pythonコードを実行する。Fusion APIを使用してFusionを操作できます
+- `get_viewport_screenshot`: Fusionのアクティブなビューポートのスクリーンショットを取得する
+- `list_user_parameters`: User Parametersの一覧を取得する
+- `set_user_parameter`: User Parameterの式を設定する
 
 ## セットアップ
 
 ### 必要なもの
 - Autodesk Fusion
-- MCP Client (Claude Desktop, Cursorなど)
+- MCPクライアント (Claude Desktop, Cursorなど)
 - Python
 - uv
 
 ### 手順
 
-1. **リポジトリをダウンロード**
+1. **リポジトリをダウンロードします。**
 
-2. **MCP ClientにServerを登録**
+2. **MCPクライアントにMCPサーバーを登録します。**
    
    Claude Desktopの場合：
    
-   Fiile > Settings > Developer > Edit Configをクリックします。
-   エクスプローラーが開くので`claude_desktop.json`を開き、以下の内容を追加します。
+   左上のメニュー > File > Settings > Developer > Edit Configから`claude_desktop.json`を開き、以下を追加します。
    
    ```json
    {
@@ -39,7 +44,7 @@ LLMとFusionを接続し、自然言語による対話でCAD操作を可能に�
          "command": "uvx",
          "args": [
            "--from",
-           "path_to_downloaded/fusion-mcp/mcp-server",
+           "[リポジトリへの絶対パス]/fusion-mcp/mcp-server",
            "fusion-mcp-server"
          ]
        }
@@ -47,36 +52,40 @@ LLMとFusionを接続し、自然言語による対話でCAD操作を可能に�
    }
    ```
 
-3. **Fusionにアドインを登録**
+3. **Fusionにアドインを登録します。**
    
-   UTILITIES > ADD-INS > 「+」ボタン > Script or add-in from device > `fusion-mcp/mcp-addin` フォルダを選択します。
-   mcp-addinが追加されるので、Runをオンにします。
-   
-   Run on Startupを有効にすると、Fusion起動時に自動でアドインが読み込まれます。
+   1. FusionでUTILITIES > ADD-INS からScripts and Add-Insウィンドウを開きます。 
+   2. 「+」ボタン > Script or add-in from device から、ダウンロードした `fusion-mcp/mcp-addin`フォルダを選択します。
+   3. リストにmcp-addinが追加されるので、Runをクリックして起動します。\
+      Run on Startupを有効にすると、Fusion起動時にアドインが自動で実行されます。
    
 ## ⚠️ 重要な注意点
 
-**LLMが生成したPythonコードをFusion内で実行する仕組みのため、セキュリティリスクがあります。**
+このFusionアドインは、**LLMが生成した任意のPythonコードをFusion内で実行します。これにはセキュリティ上のリスクがあります。**
 使用する前にFusionデータのバックアップを作成し、LLMが生成したコードを確認するようにしてください。
 
 ## 使用時のポイント
 
-Fusion MCPだけでは、LLMがCADをうまく扱えない場合がほとんどです。
-次のことを試してみてください。
+Fusion MCP単体では、LLMがFusionをうまく操作できない場合がほとんどです。
+次のような指示を直接与えたり、ツール使用前にLLMに考えてもらうと効果的です。
 
-- **具体的な数値を指定** - 「10mm伸ばして」など明確な値を含める
-- **事前に設計を考えさせる** - CAD操作前に数値を含めた設計プランを作成・検証してもらう
-- **操作手順を明確化** - 「まず部品を選択、次に押し出し」など段階的な指示
-- **Fusion APIドキュメントを提供** - 複雑な操作時は関連APIの情報を渡す
-- **スクリーンショットを活用** - 現在の状態を画像で共有
+- **具体的な数値を指定する**: 「10mm押し出す」など明確な値を与える
+- **操作手順を明確にする**: 「まず部品を選択、次に押し出し」のように手順をわける
+- **Fusion APIドキュメントを提供する**: APIのドキュメントやサンプルコードを渡す
+  - [Fusion Help | Welcome to the Fusion API](https://help.autodesk.com/view/fusion360/ENU/?guid=GUID-A92A4B10-3781-4925-94C6-47DA85A4F65A)
+  - [Fusion360DevTools](https://github.com/autodeskfusion360/fusion360devtools)
 
 これらのMCPサーバーも組み合わせると便利です。
 
-- **[Sequential Thinking MCP Server](https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking)** - LLMが設計を段階的に考えてくれるようになります
-- **[Context7 MCP Server](https://github.com/upstash/context7)** - LLMがドキュメントを探して参照できるようになります
+- **[Sequential Thinking MCP Server](https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking)**: LLMが設計を段階的に考えてくれるようになります
+- **[Context7 MCP Server](https://github.com/upstash/context7)**: LLMがドキュメントを探して参照できるようになります
   
-## Credit
+## クレジット
 
 このプロジェクトは[ahujasid](https://github.com/ahujasid)さんによる
 [blender-mcp](https://github.com/ahujasid/blender-mcp)
 を参考に作成しました。
+
+## ライセンス
+
+MIT License
