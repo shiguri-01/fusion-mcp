@@ -10,7 +10,7 @@ Autodesk Fusionを操作するためのMCP Server
 - `set_parameter`: User Parameterを更新する。
 - `health`: Fusion Add-inへ接続できるか確認する。
 
-> [!DANGER]
+> [!CAUTION]
 > LLMが生成したPythonコードをFusion上で実行します。
 > 重要なデータで扱う前にバックアップを取り、Toolの実行内容を確認するようにしてください。
 
