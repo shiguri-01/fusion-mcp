@@ -15,6 +15,7 @@ from fusion_client import (
     RESPONSE_PARSE_ERROR,
     UNKNOWN_ERROR,
     FusionAddinClient,
+    FusionHealthCheckError,
     format_error,
 )
 from pydantic import BaseModel, Field, ValidationError
@@ -36,6 +37,7 @@ mcp = FastMCP(
     instructions="""Use this server to inspect and modify the active Autodesk Fusion design.
 
 General guidance:
+- Run `health` first before using other Fusion tools.
 - Prefer `set_parameter` for simple parameter-driven edits.
 - Use `execute_code` for modeling, inspection, or automation that needs Fusion API access.
 - Use smaller steps when validation helps, or one script when the operation is tightly coupled.
@@ -209,6 +211,33 @@ class FusionParameter(BaseModel):
     unit: str
     expression: str
     comment: str = ""
+
+
+class HealthStatus(BaseModel):
+    connected: bool
+    service: str
+    message: str
+
+
+@mcp.tool
+@handle_tool_error
+async def health() -> HealthStatus:
+    """Check whether the Fusion add-in is reachable.
+
+    Run this first before using other Fusion tools.
+
+    Returns:
+    Connectivity status for the Fusion add-in. `connected: false` means the add-in is not running or not reachable yet.
+
+    """
+    connection = get_fusion_addin_client()
+
+    try:
+        result = await connection.check_health()
+    except FusionHealthCheckError as e:
+        raise ToolError(format_error(e.error_type, e.message)) from e
+
+    return HealthStatus.model_validate(result)
 
 
 @mcp.tool
