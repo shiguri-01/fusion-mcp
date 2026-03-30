@@ -8,6 +8,7 @@ Autodesk Fusionを操作するためのMCP Server
 - `get_viewport_screenshot`: 現在のビューポートのスクリーンショットを取得する。
 - `list_user_parameters`: User Parametersの一覧を取得する。
 - `set_parameter`: User Parameterを更新する。
+- `health`: Fusion Add-inへ接続できるか確認する。
 
 > [!DANGER]
 > LLMが生成したPythonコードをFusion上で実行します。

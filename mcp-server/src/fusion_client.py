@@ -34,6 +34,15 @@ UNKNOWN_ERROR = {
 }
 
 
+class FusionHealthCheckError(Exception):
+    """Raised when a health check cannot determine connectivity."""
+
+    def __init__(self, error_type: str, message: str) -> None:
+        super().__init__(message)
+        self.error_type = error_type
+        self.message = message
+
+
 def format_error(
     error_type: str | None = None,
     message: str | None = None,
@@ -57,6 +66,79 @@ class FusionAddinClient:
     def base_url(self) -> str:
         """サーバーのベースURL"""
         return f"http://{self.host}:{self.port}"
+
+    async def check_health(self) -> dict[str, Any]:
+        """Fusion add-in への接続状態を確認する.
+
+        Returns:
+            dict: 接続状態。未接続は正常な判定結果として返す。
+
+        Raises:
+            FusionHealthCheckError: 接続状態を判定できない場合
+
+        """
+        url = f"{self.base_url}/health"
+        logger.info(f"Checking Fusion add-in health at {url}")
+
+        try:
+            async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+                response = await client.post(url, json={})
+        except httpx.ConnectError:
+            logger.info(f"Fusion add-in is not reachable at {url}")
+            return {
+                "connected": False,
+                "service": "mcp-addin",
+                "message": (
+                    "Fusion add-in is not reachable. "
+                    "Ask the user to start 'mcp-addin' in Fusion."
+                ),
+            }
+        except httpx.TimeoutException as e:
+            logger.exception(f"Health check to {url} timed out.")
+            raise FusionHealthCheckError(
+                ADDIN_TIMEOUT_ERROR["type"],
+                ADDIN_TIMEOUT_ERROR["message"],
+            ) from e
+        except httpx.RequestError as e:
+            logger.exception(f"Health check request failed: {e!s}")
+            raise FusionHealthCheckError(
+                "FusionServerRequestError",
+                f"Network error while communicating with Fusion Add-in: {e!s}.",
+            ) from e
+
+        try:
+            response_data = response.json()
+        except Exception as e:
+            logger.exception(f"Failed to decode JSON response from {url}: {response.text}")
+            raise FusionHealthCheckError(
+                RESPONSE_PARSE_ERROR["type"],
+                RESPONSE_PARSE_ERROR["message"],
+            ) from e
+
+        if not response.is_success:
+            logger.error(
+                "Health check failed with HTTP status %s: %s",
+                response.status_code,
+                response_data,
+            )
+            raise FusionHealthCheckError(
+                "FusionHealthCheckError",
+                f"Health check returned unexpected HTTP status {response.status_code}.",
+            )
+
+        if not response_data.get("success", False):
+            error_info = response_data.get("error", {})
+            raise FusionHealthCheckError(
+                error_info.get("type", "FusionHealthCheckError"),
+                error_info.get("message", "Fusion add-in health check did not return success."),
+            )
+
+        result = response_data.get("result", {})
+        return {
+            "connected": True,
+            "service": result.get("service", "mcp-addin"),
+            "message": "Fusion add-in is reachable.",
+        }
 
     async def call_action(
         self,
