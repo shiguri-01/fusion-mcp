@@ -10,7 +10,7 @@ dependencies = []
 dev = [
     "poethepoet>=0.36.0",
     "ruff>=0.12.5",
-    "ty>=0.0.1a16",
+    "ty>=0.0.26",
 ]
 
 [tool.uv.workspace]
