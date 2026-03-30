@@ -33,8 +33,16 @@ def get_fusion_addin_client() -> FusionAddinClient:
 # FastMCP サーバーインスタンス
 mcp = FastMCP(
     "Fusion MCP Server",
-    instructions="""MCP server that enables AI agents to perform CAD operations in Autodesk Fusion.
-Provides tools for 3D modeling, sketching, assemblies, simulations, and design automation through the Fusion API.""",
+    instructions="""Use this server to inspect and modify the active Autodesk Fusion design.
+
+General guidance:
+- Prefer `set_parameter` for simple parameter-driven edits.
+- Use `execute_code` for modeling, inspection, or automation that needs Fusion API access.
+- Use smaller steps when validation helps, or one script when the operation is tightly coupled.
+- In longer scripts, use `print()` for progress and key intermediate results.
+- After a failed run, use the error and current Fusion state to decide the next step. Do not assume the model is unchanged.
+- Use `get_viewport_screenshot` when visual verification helps, but not as a required step.
+- Ask the user before making major or ambiguous changes.""",
 )
 
 
@@ -102,8 +110,15 @@ async def execute_code(
 ) -> str:
     """Execute Python code in Autodesk Fusion with full API access.
 
+    Use this tool for modeling, inspection, feature creation, or automation that needs direct Fusion API access.
+    Prefer `set_parameter` instead when the requested change is a simple parameter update.
+
+    Guidance:
     - Create, modify, and analyze CAD models.
     - Group all model changes into a single, undoable transaction.
+    - Use smaller steps when validation helps, or one script when the operation is tightly coupled.
+    - In longer scripts, use `print()` for progress and key intermediate results.
+    - If a run fails, use the error and current Fusion state before trying again. A failed run may have changed the model.
 
     Pre-initialized objects:
     - `adsk`: The root API module.
@@ -141,6 +156,8 @@ async def execute_code(
 @handle_tool_error
 async def get_viewport_screenshot() -> Image:
     """Capture a screenshot of the current Fusion viewport.
+
+    Use this tool when visual verification helps, such as checking modeling results or sharing the current design state.
 
     - Captures the viewport's current visual state, including the camera's perspective, orientation, and zoom.
     - Ideal for verifying modeling results, documenting the design state,
@@ -237,6 +254,8 @@ async def set_parameter(
     ],
 ) -> FusionParameter:
     """Update a parameter's expression in Fusion.
+
+    Use this tool for parameter-driven edits. Prefer it over `execute_code` for simple parameter updates.
 
     - Triggers model recomputation with new value.
 
