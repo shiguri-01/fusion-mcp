@@ -27,7 +27,6 @@ class FusionExecutionError(FusionServerError):
         )
 
 
-
 class ServerConnectionError(FusionServerError):
     """サーバーへの接続に失敗した場合に発生するエラー"""
 

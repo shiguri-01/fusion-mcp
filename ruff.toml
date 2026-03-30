@@ -11,6 +11,7 @@ ignore = [
     "D213",  # multi-line summary second line
     "D400",  # missing trailing period
     "D415",  # missing terminal punctuation
+    "E501",  # line too long; formatter handles most cases, comments/strings often remain
     "TD001", # invalid todo tag
     "TD002", # missing todo author
     "TD003", # missing todo link
@@ -23,6 +24,7 @@ ignore = [
     "EM", # string/f-string/dot-format in exception
     "RUF002", # zenkaku
     "RUF003", # zenkaku
+    "COM812", # conflicts with formatter
 ]
 unfixable = [
     "F401", # unused import
@@ -31,7 +33,3 @@ unfixable = [
 
 [lint.pycodestyle]
 ignore-overlong-task-comments = true
-
-[lint.per-file-ignores]
-"mcp-server/src/main.py" = ["E501", "D417", "ARG001"]
-"mcp-addin/**.py" = ["TID252", "N813"]

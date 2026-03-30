@@ -1,10 +1,11 @@
 import os
 import tempfile
 from collections.abc import Callable
-from functools import wraps
+from functools import cache, wraps
 from pathlib import Path
 from typing import Annotated
 
+import anyio
 import httpx
 from fastmcp import Context, FastMCP
 from fastmcp.exceptions import ToolError
@@ -20,15 +21,11 @@ from fusion_client import (
 )
 from pydantic import BaseModel, Field, ValidationError
 
-_fusion_addin_client: FusionAddinClient | None = None
 
-
+@cache
 def get_fusion_addin_client() -> FusionAddinClient:
     """FusionAddinClientのシングルトンインスタンスを取得する"""
-    global _fusion_addin_client
-    if _fusion_addin_client is None:
-        _fusion_addin_client = FusionAddinClient()
-    return _fusion_addin_client
+    return FusionAddinClient()
 
 
 # FastMCP サーバーインスタンス
@@ -89,7 +86,7 @@ def handle_tool_error[**P, R](tool_func: Callable[P, R]) -> Callable[P, R]:
 @mcp.tool
 @handle_tool_error
 async def execute_code(
-    ctx: Context,
+    _ctx: Context,
     code: Annotated[
         str,
         Field(
@@ -202,7 +199,7 @@ async def get_viewport_screenshot() -> Image:
         return Image(data=image_bytes)
     finally:
         # 一時ファイルを削除
-        Path(filepath).unlink(missing_ok=True)
+        await anyio.Path(filepath).unlink(missing_ok=True)
 
 
 class FusionParameter(BaseModel):

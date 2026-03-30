@@ -57,7 +57,7 @@ class CommandExecuteHandler(adsk.core.CommandEventHandler):
         self.namespace = namespace
         self.result_container = result_container
 
-    def notify(self, args: adsk.core.CommandEventArgs) -> None:
+    def notify(self, _args: adsk.core.CommandEventArgs) -> None:
         """コマンドが実行されたときに呼び出され、渡されたコードを実行する"""
         # 出力をキャプチャするためのバッファ
         capture_buffer = io.StringIO()
@@ -236,7 +236,7 @@ def execute_code_in_transaction(
             adsk.doEvents()
 
         if container.fusion_error:
-            raise container.fusion_error
+            raise container.fusion_error  # noqa: TRY301
 
     except Exception as e:
         if isinstance(e, (FusionExecutionError, InvalidUserInputError)):

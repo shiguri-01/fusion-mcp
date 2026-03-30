@@ -3,16 +3,16 @@ from . import commands
 from .lib import fusionAddInUtils as futil
 
 
-def run(context):
+def run(_context: object) -> None:
     try:
         # This will run the start function in each of your commands as defined in commands/__init__.py
         commands.start()
 
-    except:
+    except Exception:
         futil.handle_error("run")
 
 
-def stop(context):
+def stop(_context: object) -> None:
     try:
         # Remove all of the event handlers your app has created
         futil.clear_handlers()
@@ -20,5 +20,5 @@ def stop(context):
         # This will run the start function in each of your commands as defined in commands/__init__.py
         commands.stop()
 
-    except:
+    except Exception:
         futil.handle_error("stop")

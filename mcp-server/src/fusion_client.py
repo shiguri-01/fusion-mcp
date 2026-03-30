@@ -89,8 +89,7 @@ class FusionAddinClient:
                 "connected": False,
                 "service": "mcp-addin",
                 "message": (
-                    "Fusion add-in is not reachable. "
-                    "Ask the user to start 'mcp-addin' in Fusion."
+                    "Fusion add-in is not reachable. Ask the user to start 'mcp-addin' in Fusion."
                 ),
             }
         except httpx.TimeoutException as e:
@@ -140,7 +139,7 @@ class FusionAddinClient:
             "message": "Fusion add-in is reachable.",
         }
 
-    async def call_action(
+    async def call_action(  # noqa: PLR0911
         self,
         action_name: str,
         params: dict[str, Any] | None = None,

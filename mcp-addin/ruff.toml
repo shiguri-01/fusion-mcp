@@ -1,0 +1,11 @@
+extend = "../ruff.toml"
+extend-exclude = ["lib/fusionAddInUtils"]
+
+[lint.per-file-ignores]
+# Fusion add-in entry files are loaded by convention, not as a normal package.
+"config.py" = ["INP001"]
+"mcp-addin.py" = ["INP001"]
+# Fusion add-in code runs inside Autodesk Fusion's embedded Python environment.
+# In practice, relative imports and template-style aliases are more reliable here
+# than Ruff's preferred absolute-import / alias-naming conventions.
+"**.py" = ["TID252", "N813"]

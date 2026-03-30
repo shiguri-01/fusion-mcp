@@ -1,22 +1,22 @@
 from ...lib import fusionAddInUtils as futil
 from .server import FusionServer
 
-_server = None
+_state: dict[str, FusionServer | None] = {"server": None}
 
 
-def start():
+def start() -> None:
     try:
-        global _server
-        _server = FusionServer()
-        _server.start()
+        server = FusionServer()
+        _state["server"] = server
+        server.start()
     except Exception:
         futil.handle_error("server_start")
 
 
-def stop():
+def stop() -> None:
     try:
-        global _server
-        if _server:
-            _server.stop()
+        server = _state["server"]
+        if server:
+            server.stop()
     except Exception:
         futil.handle_error("server_stop")

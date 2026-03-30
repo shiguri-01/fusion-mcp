@@ -56,7 +56,7 @@ class FusionServer:
 
                     # アクションを実行
                     # FusionServerErrorが発生する可能性がある
-                    result = server_instance._execute_handler(action_name, **params)  # noqa: SLF001
+                    result = server_instance._execute_handler(action_name, **params)
 
                     response_data = {
                         "success": True,
