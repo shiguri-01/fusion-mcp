@@ -136,20 +136,23 @@ class FusionServer:
 
         try:
             handler = self._create_handler_class()
-            self.http_servers = [
+            candidate_servers = [
                 self._create_http_server("127.0.0.1", handler),
             ]
 
             try:
-                self.http_servers.append(self._create_http_server("::1", handler))
+                candidate_servers.append(self._create_http_server("::1", handler))
             except OSError as e:
                 futil.log(f"IPv6 loopback listener is unavailable: {e}")
 
+            self.http_servers = []
             self.server_threads = []
-            for http_server in self.http_servers:
+            for http_server in candidate_servers:
                 thread = threading.Thread(target=http_server.serve_forever)
                 thread.daemon = True
                 thread.start()
+                self._ensure_server_thread_started(thread)
+                self.http_servers.append(http_server)
                 self.server_threads.append(thread)
 
             self.is_running = True
@@ -167,8 +170,9 @@ class FusionServer:
         if self.http_servers:
             futil.log("Stopping FusionServer...")
 
-            for http_server in self.http_servers:
-                http_server.shutdown()
+            for http_server, thread in zip(self.http_servers, self.server_threads, strict=False):
+                if thread.is_alive():
+                    http_server.shutdown()
                 http_server.server_close()
 
             for thread in self.server_threads:
@@ -196,6 +200,10 @@ class FusionServer:
             return IPv6HTTPServer((host, self.port), handler)
 
         return HTTPServer((host, self.port), handler)
+
+    def _ensure_server_thread_started(self, thread: threading.Thread) -> None:
+        if not thread.is_alive():
+            raise RuntimeError("FusionServer listener thread failed to start.")
 
     def _execute_handler(self, action_name: str, **params: object) -> object:
         """指定されたアクションのハンドラーを実行する
