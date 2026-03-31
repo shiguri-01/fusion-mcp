@@ -9,9 +9,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Fusion MCP Server")
 
 # 定数
-DEFAULT_HOST = "localhost"
+DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 3600
 DEFAULT_TIMEOUT = 10.0
+HTTP_STATUS_FORBIDDEN = 403
 
 ADDIN_CONNECTION_ERROR = {
     "type": "FusionServerConnectionError",
@@ -31,6 +32,11 @@ RESPONSE_PARSE_ERROR = {
 UNKNOWN_ERROR = {
     "type": "UnknownError",
     "message": "An unexpected error occurred in the MCP server. Check the server logs for details.",
+}
+
+AUTH_ERROR = {
+    "type": "FusionServerAuthError",
+    "message": "Fusion add-in authentication failed. Ensure mcp-server and mcp-addin share the same token.",
 }
 
 
@@ -115,6 +121,11 @@ class FusionAddinClient:
             ) from e
 
         if not response.is_success:
+            if response.status_code == HTTP_STATUS_FORBIDDEN:
+                raise FusionHealthCheckError(
+                    "FusionServerAccessDeniedError",
+                    "Fusion add-in rejected a non-local request. Ensure mcp-server runs on the same machine as Fusion.",
+                )
             logger.error(
                 "Health check failed with HTTP status %s: %s",
                 response.status_code,
@@ -237,6 +248,11 @@ class FusionAddinClient:
         logger.error(
             f"Action '{action_name}' failed with HTTP status {status_code}: {response_data}",
         )
+        if status_code == HTTP_STATUS_FORBIDDEN:
+            return self._create_error_response(
+                "FusionServerAccessDeniedError",
+                "Fusion add-in rejected a non-local request. Ensure mcp-server runs on the same machine as Fusion.",
+            )
         error_info = response_data.get("error", {})
         return self._create_error_response(
             error_info.get("type", "ServerError"),
