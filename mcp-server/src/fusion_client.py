@@ -34,9 +34,9 @@ UNKNOWN_ERROR = {
     "message": "An unexpected error occurred in the MCP server. Check the server logs for details.",
 }
 
-AUTH_ERROR = {
-    "type": "FusionServerAuthError",
-    "message": "Fusion add-in authentication failed. Ensure mcp-server and mcp-addin share the same token.",
+ACCESS_DENIED_ERROR = {
+    "type": "FusionServerAccessDeniedError",
+    "message": "Fusion add-in rejected a non-local request. Ensure mcp-server runs on the same machine as Fusion.",
 }
 
 
@@ -53,6 +53,7 @@ def format_error(
     error_type: str | None = None,
     message: str | None = None,
 ) -> str:
+    """Format an MCP error type and message for logging or display."""
     if error_type is None:
         error_type = UNKNOWN_ERROR["type"]
     if message is None:
@@ -123,8 +124,8 @@ class FusionAddinClient:
         if not response.is_success:
             if response.status_code == HTTP_STATUS_FORBIDDEN:
                 raise FusionHealthCheckError(
-                    "FusionServerAccessDeniedError",
-                    "Fusion add-in rejected a non-local request. Ensure mcp-server runs on the same machine as Fusion.",
+                    ACCESS_DENIED_ERROR["type"],
+                    ACCESS_DENIED_ERROR["message"],
                 )
             logger.error(
                 "Health check failed with HTTP status %s: %s",
@@ -250,8 +251,8 @@ class FusionAddinClient:
         )
         if status_code == HTTP_STATUS_FORBIDDEN:
             return self._create_error_response(
-                "FusionServerAccessDeniedError",
-                "Fusion add-in rejected a non-local request. Ensure mcp-server runs on the same machine as Fusion.",
+                ACCESS_DENIED_ERROR["type"],
+                ACCESS_DENIED_ERROR["message"],
             )
         error_info = response_data.get("error", {})
         return self._create_error_response(

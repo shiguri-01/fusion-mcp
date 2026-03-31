@@ -37,6 +37,7 @@ class FusionServer:
         }
 
     def _create_handler_class(self) -> type[BaseHTTPRequestHandler]:
+        """Create an HTTP handler bound to this server instance."""
         # self(FusionServerインスタンス)をハンドラーから参照できるようにする
         server_instance = self
 
@@ -128,6 +129,7 @@ class FusionServer:
         return CustomHandler
 
     def start(self) -> None:
+        """Start IPv4/IPv6 loopback listeners for the Fusion add-in server."""
         if self.is_running:
             futil.log("FusionServer is already running.")
             return
@@ -161,6 +163,7 @@ class FusionServer:
             self.stop()
 
     def stop(self) -> None:
+        """Stop all active HTTP listeners and background server threads."""
         if self.http_servers:
             futil.log("Stopping FusionServer...")
 
@@ -233,6 +236,7 @@ class FusionServer:
 
 
 def is_loopback_address(address: str) -> bool:
+    """Return True when the client address is a loopback IPv4 or IPv6 address."""
     try:
         return ip_address(address).is_loopback
     except ValueError:
