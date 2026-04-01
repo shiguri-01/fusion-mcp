@@ -1,6 +1,8 @@
 import json
+import socket
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from ipaddress import ip_address
 from typing import Any
 
 from ...lib import fusionAddInUtils as futil
@@ -11,21 +13,19 @@ from .handlers import execute_code, health, parameters, screenshot
 class FusionServer:
     """FusionアドインでMCPサーバーからのリクエストを受け付けるサーバー"""
 
-    def __init__(self, host: str = "localhost", port: int = 3600) -> None:
+    def __init__(self, port: int = 3600) -> None:
         """FusionServerの初期化
 
         Args:
-            host (str): サーバーのホスト名またはIPアドレス
             port (int): サーバーのポート番号
 
         """
-        self.host = host
         self.port = port
 
         self.is_running = False
 
-        self.http_server = None
-        self.server_thread: threading.Thread | None = None
+        self.http_servers: list[HTTPServer] = []
+        self.server_threads: list[threading.Thread] = []
 
         self.actions = {
             "health": health.health,
@@ -37,11 +37,27 @@ class FusionServer:
         }
 
     def _create_handler_class(self) -> type[BaseHTTPRequestHandler]:
+        """Create an HTTP handler bound to this server instance."""
         # self(FusionServerインスタンス)をハンドラーから参照できるようにする
         server_instance = self
 
         class CustomHandler(BaseHTTPRequestHandler):
             def do_POST(self) -> None:
+                client_ip = self.client_address[0]
+                if not is_loopback_address(client_ip):
+                    futil.log(f"Rejected non-local request from {client_ip}")
+                    self._send_json_response(
+                        403,
+                        {
+                            "success": False,
+                            "error": {
+                                "type": "Forbidden",
+                                "message": "Only local loopback requests are allowed.",
+                            },
+                        },
+                    )
+                    return
+
                 response_data: dict[str, Any] = {}
                 status_code = 500
 
@@ -98,10 +114,13 @@ class FusionServer:
                     status_code = 500
 
                 finally:
-                    self.send_response(status_code)
-                    self.send_header("Content-Type", "application/json")
-                    self.end_headers()
-                    self.wfile.write(json.dumps(response_data).encode("utf-8"))
+                    self._send_json_response(status_code, response_data)
+
+            def _send_json_response(self, status_code: int, response_data: dict[str, Any]) -> None:
+                self.send_response(status_code)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(response_data).encode("utf-8"))
 
             def log_message(self, format: str, *args: Any) -> None:  # noqa: A002, ANN401
                 # HTTPサーバーのログメッセージを無効化
@@ -110,40 +129,81 @@ class FusionServer:
         return CustomHandler
 
     def start(self) -> None:
+        """Start IPv4/IPv6 loopback listeners for the Fusion add-in server."""
         if self.is_running:
             futil.log("FusionServer is already running.")
             return
 
         try:
             handler = self._create_handler_class()
-            self.http_server = HTTPServer((self.host, self.port), handler)
+            candidate_servers = [
+                self._create_http_server("127.0.0.1", handler),
+            ]
+
+            try:
+                candidate_servers.append(self._create_http_server("::1", handler))
+            except OSError as e:
+                futil.log(f"IPv6 loopback listener is unavailable: {e}")
+
+            self.http_servers = []
+            self.server_threads = []
+            for http_server in candidate_servers:
+                thread = threading.Thread(target=http_server.serve_forever)
+                thread.daemon = True
+                thread.start()
+                self._ensure_server_thread_started(thread)
+                self.http_servers.append(http_server)
+                self.server_threads.append(thread)
 
             self.is_running = True
-
-            self.server_thread = threading.Thread(target=self.http_server.serve_forever)
-            self.server_thread.daemon = True
-            self.server_thread.start()
-
-            futil.log(f"FusionServer started on {self.host}:{self.port}")
+            futil.log(
+                f"FusionServer started on loopback only: 127.0.0.1:{self.port}"
+                + (f", [::1]:{self.port}" if len(self.http_servers) > 1 else ""),
+            )
 
         except Exception as e:
-            futil.handle_error(f"Failed to start FusionServer.\n\n{e}", show_message_box=True)
+            futil.handle_error(f"Failed to start FusionServer.\n\n{e}")
             self.stop()
 
     def stop(self) -> None:
-        if self.http_server and self.is_running:
+        """Stop all active HTTP listeners and background server threads."""
+        if self.http_servers:
             futil.log("Stopping FusionServer...")
 
-            self.http_server.shutdown()  # スレッド内のループを止める
-            self.http_server.server_close()  # ソケットを閉じる
+            for http_server, thread in zip(self.http_servers, self.server_threads, strict=False):
+                if thread.is_alive():
+                    http_server.shutdown()
+                http_server.server_close()
+
+            for thread in self.server_threads:
+                thread.join(timeout=1)
 
             self.is_running = False
-            self.http_server = None
+            self.http_servers = []
+            self.server_threads = []
 
             futil.log("FusionServer stopped.")
         else:
             futil.log("FusionServer is not running or already stopped.")
             self.is_running = False  # 念のため
+
+    def _create_http_server(
+        self,
+        host: str,
+        handler: type[BaseHTTPRequestHandler],
+    ) -> HTTPServer:
+        if ":" in host:
+
+            class IPv6HTTPServer(HTTPServer):
+                address_family = socket.AF_INET6
+
+            return IPv6HTTPServer((host, self.port), handler)
+
+        return HTTPServer((host, self.port), handler)
+
+    def _ensure_server_thread_started(self, thread: threading.Thread) -> None:
+        if not thread.is_alive():
+            raise RuntimeError("FusionServer listener thread failed to start.")
 
     def _execute_handler(self, action_name: str, **params: object) -> object:
         """指定されたアクションのハンドラーを実行する
@@ -181,3 +241,11 @@ class FusionServer:
 
         else:
             return result
+
+
+def is_loopback_address(address: str) -> bool:
+    """Return True when the client address is a loopback IPv4 or IPv6 address."""
+    try:
+        return ip_address(address).is_loopback
+    except ValueError:
+        return False

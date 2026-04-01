@@ -9,9 +9,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Fusion MCP Server")
 
 # 定数
-DEFAULT_HOST = "localhost"
+DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 3600
 DEFAULT_TIMEOUT = 10.0
+HTTP_STATUS_FORBIDDEN = 403
 
 ADDIN_CONNECTION_ERROR = {
     "type": "FusionServerConnectionError",
@@ -33,6 +34,11 @@ UNKNOWN_ERROR = {
     "message": "An unexpected error occurred in the MCP server. Check the server logs for details.",
 }
 
+ACCESS_DENIED_ERROR = {
+    "type": "FusionServerAccessDeniedError",
+    "message": "Fusion add-in rejected a non-local request. Ensure mcp-server runs on the same machine as Fusion.",
+}
+
 
 class FusionHealthCheckError(Exception):
     """Raised when a health check cannot determine connectivity."""
@@ -47,6 +53,7 @@ def format_error(
     error_type: str | None = None,
     message: str | None = None,
 ) -> str:
+    """Format an MCP error type and message for logging or display."""
     if error_type is None:
         error_type = UNKNOWN_ERROR["type"]
     if message is None:
@@ -115,6 +122,11 @@ class FusionAddinClient:
             ) from e
 
         if not response.is_success:
+            if response.status_code == HTTP_STATUS_FORBIDDEN:
+                raise FusionHealthCheckError(
+                    ACCESS_DENIED_ERROR["type"],
+                    ACCESS_DENIED_ERROR["message"],
+                )
             logger.error(
                 "Health check failed with HTTP status %s: %s",
                 response.status_code,
@@ -237,6 +249,11 @@ class FusionAddinClient:
         logger.error(
             f"Action '{action_name}' failed with HTTP status {status_code}: {response_data}",
         )
+        if status_code == HTTP_STATUS_FORBIDDEN:
+            return self._create_error_response(
+                ACCESS_DENIED_ERROR["type"],
+                ACCESS_DENIED_ERROR["message"],
+            )
         error_info = response_data.get("error", {})
         return self._create_error_response(
             error_info.get("type", "ServerError"),
